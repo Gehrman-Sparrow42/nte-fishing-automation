@@ -1,0 +1,37 @@
+{
+    "roi": {
+        "top": 65,
+        "left": 782,
+        "width": 1006,
+        "height": 64
+    },
+    "bite_roi": {
+        "top": 284,
+        "left": 699,
+        "width": 1197,
+        "height": 140
+    },
+    "hsv_lower": [
+        70,
+        143,
+        133
+    ],
+    "hsv_upper": [
+        100,
+        255,
+        255
+    ],
+    "cursor_lower": [
+        10,
+        78,
+        194
+    ],
+    "cursor_upper": [
+        40,
+        255,
+        255
+    ],
+    "tolerance": 20,
+    "invert_controls": false,
+    "auto_farm": true
+}
