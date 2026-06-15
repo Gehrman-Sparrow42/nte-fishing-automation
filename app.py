@@ -11,7 +11,15 @@ import keyboard
 import time
 import random
 
-CONFIG_FILE = 'config.json'
+import sys
+
+# Get directory where script/executable is located to keep configuration portable
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 
 # ── Dark Theme Palette ────────────────────────────────────────────────────────
 C_BG        = "#0d1117"   # root / main background
@@ -32,8 +40,8 @@ C_ORANGE    = "#f97316"   # warning status color
 class FishingBotGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Zero-Risk Fishing Bot - Pro AFK Mode")
-        self.root.geometry("480x780")
+        self.root.title("Zero-Risk Fishing Bot - AFK Mode")
+        self.root.geometry("480x520")
         self.root.attributes("-topmost", True)
         self.root.resizable(False, False)
         self.root.configure(bg=C_BG)
@@ -51,6 +59,7 @@ class FishingBotGUI:
             'auto_farm': False
         }
         self.load_config()
+        self.calculate_runtime_rois()
         
         self.bot_running = False
         self.bot_thread = None
@@ -68,6 +77,39 @@ class FishingBotGUI:
                     self.config.update(json.load(f))
             except Exception as e:
                 print("Error loading config:", e)
+
+    def calculate_runtime_rois(self):
+        if 'base_resolution' not in self.config:
+            self.config['base_resolution'] = [2560, 1440]
+            
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        
+        base_w, base_h = self.config['base_resolution']
+        scale_x = screen_w / base_w
+        scale_y = screen_h / base_h
+        
+        if abs(scale_x - 1.0) < 0.01 and abs(scale_y - 1.0) < 0.01:
+            self.runtime_roi = self.config['roi'].copy()
+            self.runtime_bite_roi = self.config.get('bite_roi', {'top': 0, 'left': 0, 'width': 0, 'height': 0}).copy()
+        else:
+            print(f"Auto-scaling ROIs from {base_w}x{base_h} to {screen_w}x{screen_h} (scale X: {scale_x:.2f}, Y: {scale_y:.2f})")
+            
+            roi = self.config['roi']
+            self.runtime_roi = {
+                'top': int(roi['top'] * scale_y),
+                'left': int(roi['left'] * scale_x),
+                'width': int(roi['width'] * scale_x),
+                'height': int(roi['height'] * scale_y)
+            }
+            
+            bite_roi = self.config.get('bite_roi', {'top': 0, 'left': 0, 'width': 0, 'height': 0})
+            self.runtime_bite_roi = {
+                'top': int(bite_roi['top'] * scale_y),
+                'left': int(bite_roi['left'] * scale_x),
+                'width': int(bite_roi['width'] * scale_x),
+                'height': int(bite_roi['height'] * scale_y)
+            }
 
     def save_config(self):
         if hasattr(self, 'invert_var'):
@@ -124,6 +166,16 @@ class FishingBotGUI:
             foreground=[("active", C_ACCENT)],
             bordercolor=[("active", C_ACCENT)])
 
+        # Collapsible Section Headers (Flat, highlight color)
+        style.configure("Collapsible.TButton",
+            background=C_SURFACE, foreground=C_ACCENT,
+            bordercolor=C_BORDER, darkcolor=C_SURFACE, lightcolor=C_SURFACE,
+            font=("Segoe UI", 10, "bold"), padding=8, relief="flat")
+        style.map("Collapsible.TButton",
+            background=[("active", C_BTN_ACT), ("pressed", C_BORDER)],
+            foreground=[("active", C_TEXT)],
+            bordercolor=[("active", C_ACCENT)])
+
         # Checkbutton
         style.configure("TCheckbutton",
             background=C_SURFACE, foreground=C_TEXT,
@@ -149,45 +201,82 @@ class FishingBotGUI:
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Header
-        ttk.Label(main_frame, text="🎣 Tower of Fantasy AFK Bot",
+        ttk.Label(main_frame, text="🎣 Neverness to Everness AFK Bot",
                   style="Header.TLabel").pack(pady=(0, 2))
-        ttk.Label(main_frame, text="Configure the areas and colors below, then press START.",
+        ttk.Label(main_frame, text="Colors & regions are pre-calibrated and will auto-scale to your screen size. If it works, just press START! Otherwise, expand 'Calibration & Setup' below to calibrate manually.",
                   style="TLabel", foreground=C_TEXT_DIM,
-                  font=("Segoe UI", 9)).pack(pady=(0, 10))
+                  font=("Segoe UI", 9), wraplength=440).pack(pady=(0, 10))
 
         # Thin accent separator line under header
         sep = tk.Frame(main_frame, height=1, bg=C_ACCENT)
         sep.pack(fill=tk.X, pady=(0, 8))
 
+        # --- COLLAPSIBLE SETUP PANEL ---
+        self.calib_expanded = False
+
+        self.calib_toggle_btn = ttk.Button(
+            main_frame,
+            text="▶  Show Calibration & Setup (Steps 1 & 2)",
+            style="Collapsible.TButton",
+            command=self.toggle_calibration
+        )
+        self.calib_toggle_btn.pack(fill=tk.X, pady=(0, 5))
+
+        # Container frame for Step 1 and Step 2 (starts hidden / unpacked)
+        self.calib_container = ttk.Frame(main_frame)
+
         # --- STEP 1: ROI ---
-        step1_frame = ttk.LabelFrame(main_frame, text=" ▸ Step 1: Tell Bot Where to Look ", padding=10)
+        step1_frame = ttk.LabelFrame(self.calib_container, text=" ▸ Step 1: Screen Regions (ROI) ", padding=10)
         step1_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Button(step1_frame, text="🖼  1a. Select Fishing Bar Area",
-                   command=lambda: self.calibrate_roi('fishing_bar')).pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(step1_frame,
+                  text="1. Click below, draw a horizontal box covering the game's slider gauge (where cursor/target slide left/right), and press ENTER.",
+                  wraplength=420, style="Info.TLabel").pack(anchor=tk.W, pady=(0, 4))
+        ttk.Button(step1_frame, text="🖼  1a. Select Fishing Gauge Area",
+                   command=lambda: self.calibrate_roi('fishing_bar')).pack(fill=tk.X, pady=(0, 10))
 
         ttk.Label(step1_frame,
-                  text="Draw a box where the 'Fish on the hook!' text appears."
-                       " It doesn't need to be visible right now, just guess the area!",
+                  text="2. (For 100% AFK) Click below and draw a box over the screen area where the yellow 'Fish on the hook!' text appears. Press ENTER.",
                   wraplength=420, style="Info.TLabel").pack(anchor=tk.W, pady=(0, 4))
-        ttk.Button(step1_frame, text="🎣  1b. Select 'Fish on Hook!' Area",
+        ttk.Button(step1_frame, text="🎣  1b. Select 'Fish on Hook!' Alert Area",
                    command=lambda: self.calibrate_roi('bite_area')).pack(fill=tk.X)
 
         # --- STEP 2: Color ---
-        step2_frame = ttk.LabelFrame(main_frame, text=" ▸ Step 2: Auto-Detect Colors ", padding=10)
+        step2_frame = ttk.LabelFrame(self.calib_container, text=" ▸ Step 2: Target & Cursor Colors ", padding=10)
         step2_frame.pack(fill=tk.X, pady=5)
 
         ttk.Label(step2_frame,
-                  text="Click 2a to grab a screenshot. Clicking 2b will reuse that exact same screenshot.",
-                  wraplength=420, style="Info.TLabel").pack(anchor=tk.W, pady=(0, 5))
+                  text="Make sure the fishing gauge is visible on screen before clicking below.",
+                  wraplength=420, style="Info.TLabel", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(0, 6))
 
-        ttk.Button(step2_frame, text="🎯  2a. Detect CYAN Target",
-                   command=lambda: self.calibrate_color('target')).pack(fill=tk.X, pady=(0, 5))
-        ttk.Button(step2_frame, text="🎯  2b. Detect YELLOW Cursor",
+        ttk.Label(step2_frame,
+                  text="1. Click 2a. On the screenshot, click directly on the CYAN target marker. Ensure it is white in the right preview window. Press Q to save.",
+                  wraplength=420, style="Info.TLabel").pack(anchor=tk.W, pady=(0, 4))
+        ttk.Button(step2_frame, text="🎯  2a. Detect CYAN Target Color",
+                   command=lambda: self.calibrate_color('target')).pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(step2_frame,
+                  text="2. Click 2b. On the same screenshot, click directly on the YELLOW cursor slider. Ensure it is white in the right preview window. Press Q to save.",
+                  wraplength=420, style="Info.TLabel").pack(anchor=tk.W, pady=(0, 4))
+        ttk.Button(step2_frame, text="🎯  2b. Detect YELLOW Cursor Color",
                    command=lambda: self.calibrate_color('cursor')).pack(fill=tk.X)
 
+        # --- COLLAPSIBLE SETTINGS PANEL ---
+        self.settings_expanded = False
+
+        self.settings_toggle_btn = ttk.Button(
+            main_frame,
+            text="▶  Show Bot Settings (AFK Loop, Invert, Tolerance)",
+            style="Collapsible.TButton",
+            command=self.toggle_settings
+        )
+        self.settings_toggle_btn.pack(fill=tk.X, pady=(5, 5))
+
+        # Container frame for Settings (starts hidden / unpacked)
+        self.settings_container = ttk.Frame(main_frame)
+
         # --- SETTINGS ---
-        settings_frame = ttk.LabelFrame(main_frame, text=" ▸ Bot Settings ", padding=10)
+        settings_frame = ttk.LabelFrame(self.settings_container, text=" ▸ Bot Settings ", padding=10)
         settings_frame.pack(fill=tk.X, pady=5)
 
         self.autofarm_var = tk.BooleanVar(value=self.config.get('auto_farm', False))
@@ -215,9 +304,17 @@ class FishingBotGUI:
                                 highlightbackground=C_BORDER)
         status_outer.pack(fill=tk.X, pady=8)
 
-        self.status_var = tk.StringVar(value="Status: Waiting for Setup...")
+        # Check if pre-existing calibration is loaded
+        if self.config.get('roi', {}).get('width', 0) > 0:
+            initial_status = "Status: Ready"
+            initial_color = C_GREEN
+        else:
+            initial_status = "Status: Waiting for Setup..."
+            initial_color = C_ORANGE
+
+        self.status_var = tk.StringVar(value=initial_status)
         self.status_label = tk.Label(status_outer, textvariable=self.status_var,
-                                     fg=C_ORANGE, bg=C_SURFACE,
+                                     fg=initial_color, bg=C_SURFACE,
                                      font=("Segoe UI", 12, "bold"), pady=6)
         self.status_label.pack()
 
@@ -244,6 +341,36 @@ class FishingBotGUI:
                  text="Hotkeys: F8 = Start  •  F9 = Stop",
                  bg=C_BG, fg=C_TEXT_DIM, font=("Segoe UI", 8)).pack(pady=(8, 0))
 
+        self.resize_to_fit()
+
+    def toggle_calibration(self):
+        if self.calib_expanded:
+            self.calib_container.pack_forget()
+            self.calib_toggle_btn.config(text="▶  Show Calibration & Setup (Steps 1 & 2)")
+            self.calib_expanded = False
+        else:
+            self.calib_container.pack(fill=tk.X, after=self.calib_toggle_btn, pady=5)
+            self.calib_toggle_btn.config(text="▼  Hide Calibration & Setup (Steps 1 & 2)")
+            self.calib_expanded = True
+        self.resize_to_fit()
+    def toggle_settings(self):
+        if self.settings_expanded:
+            self.settings_container.pack_forget()
+            self.settings_toggle_btn.config(text="▶  Show Bot Settings (AFK Loop, Invert, Tolerance)")
+            self.settings_expanded = False
+        else:
+            self.settings_container.pack(fill=tk.X, after=self.settings_toggle_btn, pady=5)
+            self.settings_toggle_btn.config(text="▼  Hide Bot Settings (AFK Loop, Invert, Tolerance)")
+            self.settings_expanded = True
+        self.resize_to_fit()
+
+    def resize_to_fit(self):
+        self.root.geometry("")
+        self.root.update_idletasks()
+        required_height = self.root.winfo_reqheight()
+        # Add 12px extra buffer space at the bottom to ensure no compression
+        self.root.geometry(f"480x{required_height + 12}")
+
     def calibrate_roi(self, mode):
         self.root.withdraw()
         self.root.update()
@@ -262,6 +389,10 @@ class FishingBotGUI:
         
         if roi != (0, 0, 0, 0):
             x, y, w, h = roi
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            self.config['base_resolution'] = [screen_w, screen_h]
+
             if mode == 'fishing_bar':
                 self.config['roi'] = {'top': y, 'left': x, 'width': w, 'height': h}
                 self.status_var.set("Status: Fishing Bar Saved!")
@@ -269,6 +400,7 @@ class FishingBotGUI:
                 self.config['bite_roi'] = {'top': y, 'left': x, 'width': w, 'height': h}
                 self.status_var.set("Status: Bite Area Saved!")
             self.save_config()
+            self.calculate_runtime_rois()
             self.status_label.config(fg=C_GREEN)
         else:
             self.status_var.set("Status: Calibration Cancelled")
@@ -289,7 +421,7 @@ class FishingBotGUI:
             roi_img = self.last_screenshot.copy()
         else:
             with mss.mss() as sct:
-                roi_img_bgra = np.array(sct.grab(self.config['roi']))
+                roi_img_bgra = np.array(sct.grab(self.runtime_roi))
                 roi_img = cv2.cvtColor(roi_img_bgra, cv2.COLOR_BGRA2BGR)
             self.last_screenshot = roi_img.copy()
             
@@ -424,8 +556,8 @@ class FishingBotGUI:
             pass
 
     def bot_loop(self):
-        roi = self.config['roi']
-        bite_roi = self.config.get('bite_roi', {'top': 0, 'left': 0, 'width': 0, 'height': 0})
+        roi = self.runtime_roi
+        bite_roi = self.runtime_bite_roi
         
         lower_hsv = np.array(self.config['hsv_lower'])
         upper_hsv = np.array(self.config['hsv_upper'])
@@ -674,6 +806,16 @@ class FishingBotGUI:
         self.root.after(0, self.stop_bot)
 
 if __name__ == "__main__":
+    # Enable High DPI awareness on Windows to fix blurry/hazy window scaling
+    try:
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1) # System DPI aware
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware() # Fallback for older Windows
+        except Exception:
+            pass
+
     root = tk.Tk()
     app = FishingBotGUI(root)
     root.mainloop()

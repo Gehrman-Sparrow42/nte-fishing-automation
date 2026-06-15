@@ -1,5 +1,5 @@
 @echo off
-echo Starting Tower of Fantasy Fishing Bot...
+echo Starting Neverness to Everness Fishing Bot...
 cd /d "%~dp0"
 start pythonw app.py
 exit
