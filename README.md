@@ -1,70 +1,99 @@
-# 🎣 Neverness to Everness AFK Fishing Bot
+# nte-fishing-automation
 
-An automated, intelligent desktop assistant for the Neverness to Everness fishing mini-game. Features real-time computer vision detection, multi-threaded GUI, automated bite monitoring, and custom-tailored humanized inputs (aim-assist feathering) to avoid macro detection signatures.
+Computer-vision-guided automation bot with real-time HSV color tracking, non-linear PID-style input feathering, and state-machine AFK loops for Neverness to Everness.
 
----
+## Overview
 
-## ✨ Features
+NTE Fishing Automation is a desktop computer vision utility designed to automate the fishing minigame in Neverness to Everness (NTE). It captures screen regions at 30+ FPS via Windows GDI, tracks target indicators and dynamic cursor positions via OpenCV HSV mask filtering, and applies micro-input feathering algorithms to simulate humanized reeling trajectories while evading heuristic macro detection.
 
-- **📺 Intuitive GUI Setup**: Fully-featured Tkinter dark-theme interface for setting up Regions of Interest (ROI) and calibrating colors.
-- **👁️ Computer Vision Tracking**: Uses OpenCV and HSV thresholding to track the target gauge and cursor positions in real-time.
-- **🤖 Smart Reeling Logic**: Alternates between holding keys for large distances and micro-taps (feathering) for precision alignment close to the target.
-- **🔄 Complete AFK Loop**: Can automatically cast the bait, detect bites, hook the fish, play the reeling minigame, claim the fish, and recast.
-- **⌨️ Global Hotkeys & Failsafes**: Start and stop the bot instantly at any time via F8 (Start) and F9 (Stop/Emergency Exit).
+## Architecture and Pipeline
 
----
+The application processes frames through an asynchronous tracking and input synthesis pipeline.
 
-## 📋 Requirements & Dependencies
-
-- **Operating System**: Windows (required for key/mouse event simulation)
-- **Python Version**: Python 3.8 or higher
-- **Permissions**: **Must be run as Administrator** (required by the `keyboard` library to intercept/inject global inputs).
-
-To install the required dependencies:
-```bash
-pip install -r requirements.txt
+```mermaid
+flowchart LR
+    A[Desktop Screen Buffer: MSS / Windows GDI] --> B[Region of Interest Cropping]
+    B --> C[HSV Color Space Transformation]
+    C --> D[Morphological Masking: Cyan Target / Yellow Cursor]
+    D --> E[Centroid Coordinate Extraction]
+    E --> F[Error Calculation: Delta X]
+    F --> G[Feathering Input Controller: Hold vs Tap]
+    G --> H[Windows DirectInput Key Injection]
+    B --> I[Bite State Detector]
+    I --> J[AFK Re-Cast and Claim State Machine]
+    J --> H
 ```
 
----
+- Vision Pipeline: Real-time window capture processes region-of-interest (ROI) frames, transforming RGB pixels into HSV space to isolate target centroids under varying lighting.
+- Error Control: Calculates delta distance between target and cursor. Far distances trigger continuous key down events; sub-threshold distances engage variable micro-tap feathering to eliminate overshooting.
+- State Machine: Automates the complete lifecycle: cast initiation, bite detection via template difference, mini-game execution, loot claiming, and automated re-casting.
+- User Safety & Hotkeys: Global keyboard listeners (`F8` start, `F9` emergency kill-switch) provide immediate worker thread preemption.
 
-## 🛠️ Calibration & Setup Guide
+## Tech Stack
 
-Before launching the bot, you must calibrate it to match your game's screen resolution and settings. In the GUI, click **Show Calibration & Setup (Steps 1 & 2)** to expand the configuration section:
+| Component | Technology | Description |
+| :--- | :--- | :--- |
+| Runtime | Python 3.10+ | Execution environment (requires Windows Administrator) |
+| Vision / Tracking | OpenCV (`cv2`), NumPy, MSS | Real-time screen capture and HSV threshold filtering |
+| Input Simulation | PyDirectInput, Keyboard | Low-level Windows scancode simulation and global hotkey interception |
+| GUI & Calibration | Tkinter, CustomTkinter | Interactive ROI selection and color threshold calibration tool |
 
-### Step 1: Draw the Scanning Regions
-1. Start the bot (see [Running the Bot](#-running-the-bot) below).
-2. Click **1a. Select Fishing Bar Area** to capture the screen. Draw a box around the entire horizontal reel bar (where the target and cursor slide left/right) and press **ENTER**.
-3. Click **1b. Select 'Fish on Hook!' Area** and draw a box around the region where the "Fish on the hook!" notification appears when a fish bites, then press **ENTER**.
+## Project Structure
 
-### Step 2: Auto-Detect Colors
-1. Launch the fishing mini-game so the target bar is visible.
-2. Click **2a. Detect CYAN Target**. On the window that opens, click directly on the cyan target marker. Make sure the mask view on the right displays the target clearly in white. Press **Q** to save.
-3. Click **2b. Detect YELLOW Cursor**. Click directly on the yellow slider cursor. Verify it's isolated on the mask, then press **Q** to save.
+```text
+Automated_Fishing_Bot_For_NTE/
+├── .gitignore            # Git exclusion filters
+├── README.md             # Technical documentation
+├── app.py                # Main GUI application and threading coordinator
+├── calibration.py        # Interactive ROI and HSV color calibration window
+├── main.py               # Core CV tracking loops and input feathering algorithms
+├── config.json           # User calibration data, coordinates, and tolerances
+├── requirements.txt      # Python package manifest
+└── Start_Fishing_Bot.bat # Windows administrator launch script
+```
 
-### Step 3: Configure Settings
-- **Enable 100% AFK Auto-Farm Loop**: Check this to automatically cast bait, detect bites, hook, reel, and loop.
-- **Invert Controls**: Toggle this if the bot moves the cursor in the opposite direction of the target.
-- **Tolerance**: Adjusts the sensitivity of the aim assist. Higher values reduce key press frequency.
+## Setup and Prerequisites
 
----
+### Prerequisites
+- Windows 10/11
+- Python 3.10 or higher
+- Administrator privileges (required by Windows DirectInput interception)
 
-## 🚀 Running the Bot
+### Installation
 
-Because the bot interacts with input APIs, it **must run with administrator privileges**:
-
-1. Open a terminal (CMD or PowerShell) **as Administrator**.
-2. Run the script:
+1. Clone repository:
    ```bash
-   python app.py
+   git clone https://github.com/Gehrman-Sparrow42/Automated_Fishing_Bot_For_NTE.git
+   cd Automated_Fishing_Bot_For_NTE
    ```
-   *(Alternatively, run `Start_Fishing_Bot.bat` as Administrator to launch the GUI in windowless mode).*
 
-3. **Hotkeys**:
-   - Press **F8** to start the bot loop.
-   - Press **F9** to halt the bot immediately.
+2. Configure virtual environment:
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
 
----
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## ⚠️ Disclaimer & Safety Warning
+## Usage Examples
 
-This project is created for educational and personal use only. Using third-party automation tools or bots in online games may violate the game's Terms of Service (ToS) and could result in account restriction or ban. Use at your own discretion.
+### Starting the Calibration and Bot UI
+Run from an elevated administrator console:
+```bash
+python app.py
+```
+
+### Calibration Workflow
+1. Launch the game in windowed or borderless fullscreen mode.
+2. Under **Calibration & Setup**, click **Select Fishing Bar Area** and drag a rectangle enclosing the reel meter.
+3. Click **Detect CYAN Target** and click the target marker to isolate its HSV spectrum.
+4. Click **Detect YELLOW Cursor** to calibrate slider cursor tracking.
+5. Press `F8` to begin the automation loop; press `F9` to halt execution instantly.
+
+## Notes and Constraints
+
+- Display Scaling: Windows Display DPI scaling must match between monitor settings and game rendering resolution to prevent coordinate offset errors.
+- Input Injection: Certain anti-cheat hooks block simulated software inputs; running the terminal as Administrator is mandatory for DirectInput scancode injection.
