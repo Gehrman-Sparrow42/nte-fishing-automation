@@ -1,99 +1,48 @@
-# nte-fishing-automation
+# NTE Fishing Automation
 
-Computer-vision-guided automation bot with real-time HSV color tracking, non-linear PID-style input feathering, and state-machine AFK loops for Neverness to Everness.
+A Windows desktop utility that tracks the fishing gauge in *Neverness to Everness* and drives the reel control from the observed cursor position.
 
-## Overview
+The Tkinter interface saves screen regions, color thresholds and control settings in `config.json`. It supports the fishing gauge on its own and an optional loop that waits for the bite alert and casts again when the gauge disappears.
 
-NTE Fishing Automation is a desktop computer vision utility designed to automate the fishing minigame in Neverness to Everness (NTE). It captures screen regions at 30+ FPS via Windows GDI, tracks target indicators and dynamic cursor positions via OpenCV HSV mask filtering, and applies micro-input feathering algorithms to simulate humanized reeling trajectories while evading heuristic macro detection.
-
-## Architecture and Pipeline
-
-The application processes frames through an asynchronous tracking and input synthesis pipeline.
+## Vision and control pipeline
 
 ```mermaid
 flowchart LR
-    A[Desktop Screen Buffer: MSS / Windows GDI] --> B[Region of Interest Cropping]
-    B --> C[HSV Color Space Transformation]
-    C --> D[Morphological Masking: Cyan Target / Yellow Cursor]
-    D --> E[Centroid Coordinate Extraction]
-    E --> F[Error Calculation: Delta X]
-    F --> G[Feathering Input Controller: Hold vs Tap]
-    G --> H[Windows DirectInput Key Injection]
-    B --> I[Bite State Detector]
-    I --> J[AFK Re-Cast and Claim State Machine]
-    J --> H
+    Config["Saved calibration"] --> Capture["MSS screen regions"]
+    Screen["Fishing gauge or bite alert"] --> Capture
+    Capture --> HSV["OpenCV HSV masks"]
+    HSV --> Gauge["Cyan target and yellow cursor positions"]
+    Gauge --> Control["Position error and tolerance"]
+    Control --> Mouse["Mouse hold, release or tap"]
+    HSV --> Bite["Bite alert detection"]
+    Bite --> Loop["Optional cast, wait and reel loop"]
+    Loop --> Mouse
 ```
 
-- Vision Pipeline: Real-time window capture processes region-of-interest (ROI) frames, transforming RGB pixels into HSV space to isolate target centroids under varying lighting.
-- Error Control: Calculates delta distance between target and cursor. Far distances trigger continuous key down events; sub-threshold distances engage variable micro-tap feathering to eliminate overshooting.
-- State Machine: Automates the complete lifecycle: cast initiation, bite detection via template difference, mini-game execution, loot claiming, and automated re-casting.
-- User Safety & Hotkeys: Global keyboard listeners (`F8` start, `F9` emergency kill-switch) provide immediate worker thread preemption.
+The worker samples the selected screen regions and converts each frame to HSV. In the gauge it compares the target and cursor positions, then adjusts the reel input using the configured tolerance and control direction. The optional recast loop uses a separate region for the bite alert.
 
-## Tech Stack
+## Run from source
 
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| Runtime | Python 3.10+ | Execution environment (requires Windows Administrator) |
-| Vision / Tracking | OpenCV (`cv2`), NumPy, MSS | Real-time screen capture and HSV threshold filtering |
-| Input Simulation | PyDirectInput, Keyboard | Low-level Windows scancode simulation and global hotkey interception |
-| GUI & Calibration | Tkinter, CustomTkinter | Interactive ROI selection and color threshold calibration tool |
+Use Windows and Python with Tkinter. From the repository root in PowerShell:
 
-## Project Structure
-
-```text
-Automated_Fishing_Bot_For_NTE/
-├── .gitignore            # Git exclusion filters
-├── README.md             # Technical documentation
-├── app.py                # Main GUI application and threading coordinator
-├── calibration.py        # Interactive ROI and HSV color calibration window
-├── main.py               # Core CV tracking loops and input feathering algorithms
-├── config.json           # User calibration data, coordinates, and tolerances
-├── requirements.txt      # Python package manifest
-└── Start_Fishing_Bot.bat # Windows administrator launch script
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe app.py
 ```
 
-## Setup and Prerequisites
+1. Open the fishing gauge in the game and expand **Calibration & Setup** in the tool.
+2. Choose **Select Fishing Gauge Area**, draw the rectangle around the slider, and press **Enter**. Select the **Fish on Hook! Alert Area** as well if using the optional recast loop.
+3. Use the cyan target and yellow cursor pickers while the gauge is visible. Check each mask preview and press **Q** to save the selected color.
+4. Start or toggle the worker with **F8**. Press **F9** to stop it. If the input moves the cursor away from the target, check **Invert Controls** in Bot Settings.
 
-### Prerequisites
-- Windows 10/11
-- Python 3.10 or higher
-- Administrator privileges (required by Windows DirectInput interception)
+The utility captures visible desktop pixels. Recheck the regions and color masks after changing monitors, game scaling, or display settings.
 
-### Installation
+## Code map
 
-1. Clone repository:
-   ```bash
-   git clone https://github.com/Gehrman-Sparrow42/Automated_Fishing_Bot_For_NTE.git
-   cd Automated_Fishing_Bot_For_NTE
-   ```
-
-2. Configure virtual environment:
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Usage Examples
-
-### Starting the Calibration and Bot UI
-Run from an elevated administrator console:
-```bash
-python app.py
-```
-
-### Calibration Workflow
-1. Launch the game in windowed or borderless fullscreen mode.
-2. Under **Calibration & Setup**, click **Select Fishing Bar Area** and drag a rectangle enclosing the reel meter.
-3. Click **Detect CYAN Target** and click the target marker to isolate its HSV spectrum.
-4. Click **Detect YELLOW Cursor** to calibrate slider cursor tracking.
-5. Press `F8` to begin the automation loop; press `F9` to halt execution instantly.
-
-## Notes and Constraints
-
-- Display Scaling: Windows Display DPI scaling must match between monitor settings and game rendering resolution to prevent coordinate offset errors.
-- Input Injection: Certain anti-cheat hooks block simulated software inputs; running the terminal as Administrator is mandatory for DirectInput scancode injection.
+| Component | Responsibility |
+| --- | --- |
+| [Desktop app](app.py) | Tkinter interface, calibration, hotkeys and tracking worker |
+| [Calibration utility](calibration.py) | Standalone OpenCV calibration preview |
+| [Standalone tracker](main.py) | Earlier entry point with hard-coded calibration |
+| [Configuration](config.json) and [dependencies](requirements.txt) | Saved calibration and Python packages |
